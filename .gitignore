@@ -1,0 +1,14 @@
+# build output
+target/
+bin/
+*.jar
+!**/.mvn/wrapper/*.jar
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# local env
+.env

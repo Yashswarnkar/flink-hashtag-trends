@@ -1,0 +1,8 @@
+# Lima VM that hosts the whole stack (rootless Docker inside Ubuntu LTS).
+# Created by `make vm-create`; the Makefile mounts only this repo (read-only)
+# into the VM so compose bind-mounts resolve to the same paths.
+base: template:docker
+
+cpus: 6
+memory: 8GiB
+disk: 40GiB
