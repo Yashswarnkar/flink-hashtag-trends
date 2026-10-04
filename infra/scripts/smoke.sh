@@ -4,7 +4,6 @@
 # to look at in the UI.
 #
 #   ./infra/scripts/smoke.sh          check + start the example job
-#   ./infra/scripts/smoke.sh stop     cancel all running jobs
 set -euo pipefail
 
 FLINK=http://localhost:8081
@@ -23,13 +22,6 @@ active_jobs() {
 job_state() {
   curl -fs "$FLINK/jobs/$1" | python3 -c 'import json,sys; print(json.load(sys.stdin)["state"])'
 }
-
-if [[ "${1:-}" == "stop" ]]; then
-  for jid in $(active_jobs); do
-    curl -fs -X PATCH "$FLINK/jobs/$jid?mode=cancel" >/dev/null && ok "cancelled $jid"
-  done
-  exit 0
-fi
 
 echo "Services"
 overview=$(curl -fs "$FLINK/overview") || fail "Flink REST not reachable on $FLINK"

@@ -17,8 +17,8 @@ plus a write-up of what happens inside the cluster.
 | Phase | Topic | State |
 |---|---|---|
 | 0 | Cluster anatomy: VM, Kafka, Flink, Redis, smoke job | ✅ |
-| 1 | End to end: generator → Kafka → Flink count → Redis | ⏳ |
-| 2 | Event time, watermarks, sliding windows, late data | |
+| 1 | End to end: generator → Kafka → Flink count → Redis | ✅ |
+| 2 | Event time, watermarks, sliding windows, late data | ⏳ |
 | 3 | Keyed state, RocksDB, checkpoints, failure recovery | |
 | 4 | Two-stage top-K, hot-key skew, salting | |
 | 5 | Custom Redis Sink (Sink v2), delivery guarantees, backpressure | |
@@ -34,6 +34,11 @@ Everything runs in a single Lima VM (6 CPU / 8 GiB), so nothing is installed on 
 make vm-create   # one-time: Ubuntu VM with rootless Docker
 make up          # start VM + services, wait for health, create topics
 make smoke       # check services, run a sample Flink job
+make smoke-stop
+make build       # job jar (with tests) + generator binary
+make reset job   # clean slate, submit the hashtag job
+make gen DURATION=30s
+make verify      # Redis totals == generator's ground truth?
 make help        # all targets
 make down        # stop everything and the VM
 ```
@@ -47,7 +52,9 @@ make down        # stop everything and the VM
 ## Layout
 
 ```
-infra/       Lima VM config, docker-compose, helper scripts
+infra/       Lima VM config, docker-compose, helper scripts (job submit/reset/verify)
+generator/   Go: synthetic posts → Kafka, skewed hashtags, ground-truth output
+flink/       Maven: redis-sink (Sink v2 connector) + hashtag-job (the pipeline)
 docs/        PLAN.md (full plan + progress) and one concept guide per phase
 ```
 

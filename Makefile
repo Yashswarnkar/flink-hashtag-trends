@@ -67,7 +67,44 @@ smoke: ## Run a bundled Flink example job to check the cluster
 	./infra/scripts/smoke.sh
 
 smoke-stop: ## Cancel running jobs
-	./infra/scripts/smoke.sh stop
+	./infra/scripts/job.sh cancel
+
+# ---- Pipeline ---------------------------------------------------------------
+
+P        ?= 2
+RATE     ?= 1000
+DURATION ?= 0
+TRUTH    ?= /tmp/hashtags-truth.json
+
+build: ## Build the Flink job jar (+ run tests) and the generator
+	cd flink && mvn -B -q package
+	cd generator && go build -o bin/generator ./cmd/generator
+
+test: ## Run Java and Go tests
+	cd flink && mvn -B -q test
+	cd generator && go test ./...
+
+job: ## Submit the hashtag job (make job P=4)
+	./infra/scripts/job.sh submit $(P)
+
+job-cancel: ## Cancel all running jobs
+	./infra/scripts/job.sh cancel
+
+jobs: ## List jobs
+	./infra/scripts/job.sh list
+
+gen: ## Produce posts (make gen RATE=2000 DURATION=30s ARGS="-zipf 1.5")
+	./generator/bin/generator -rate $(RATE) -duration $(DURATION) -truth-out $(TRUTH) $(ARGS)
+
+reset: ## Cancel jobs, empty the topic, clear Redis results
+	./infra/scripts/reset.sh
+
+verify: ## Compare Redis totals with the last generator run's ground truth
+	./infra/scripts/verify-totals.py $(TRUTH)
+
+totals: ## Top 15 hashtags from Redis
+	@$(COMPOSE) exec -T redis redis-cli HGETALL hashtag:totals \
+		| paste - - | sort -k2 -nr | head -15
 
 kafka-topics: ## Describe Kafka topics
 	$(COMPOSE) exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --describe
@@ -76,4 +113,4 @@ redis-cli: ## Open redis-cli
 	$(COMPOSE) exec redis redis-cli
 
 
-.PHONY: smoke-stop topics help vm-create vm-start vm-stop vm-delete vm-shell up down clean ps logs stats urls smoke kafka-topics redis-cli
+.PHONY: build test job job-cancel jobs gen reset verify totals smoke-stop topics help vm-create vm-start vm-stop vm-delete vm-shell up down clean ps logs stats urls smoke kafka-topics redis-cli

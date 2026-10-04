@@ -142,7 +142,7 @@ Each phase: deliverables → acceptance checks (all must pass before calling it 
 - Lima VM, compose (Kafka, JM, 2 TMs, Redis), Makefile, smoke script, `docs/00-cluster-anatomy.md`.
 - Accept: `make up` healthy; `make smoke` passes; TM kill/restart observed and documented.
 
-### Phase 1: End-to-end pipeline
+### Phase 1: End-to-end pipeline ✅
 - **generator/** (Go, `franz-go` client): flags `--rate`, `--tags` (vocabulary size),
   `--zipf` (skew), `--users`; JSON events above; graceful shutdown; prints throughput.
   `make gen` runs it on the host against `localhost:29092`.
@@ -248,3 +248,7 @@ Each phase: deliverables → acceptance checks (all must pass before calling it 
 | 2026-10-04 | VM memory 10 → 8 GiB | owner asked about RAM impact on 16 GB host |
 | 2026-10-04 | MinIO moved to phase 3, Prometheus/Grafana to phase 5 | add components when first used |
 | 2026-10-04 | Flink 2.2.1 instead of 2.3.0 | Kafka connector supports ≤2.2 |
+| 2026-10-04 | Java package `dev.hashtags.*`, Go module `hashtags/generator` | neutral names; may switch Go module to github.com path after repo exists |
+| 2026-10-04 | Generator writes ground truth (`-truth-out`) + `make verify` added in phase 1 (was phase 3) | exact correctness check from day one |
+| 2026-10-04 | `JobConfig` parses `--key value` args itself | avoid `ParameterTool` package churn in Flink 2.x (Q3) |
+| 2026-10-04 | Jackson pinned via `jackson-bom` | Kafka connector pulled jackson-core 2.18 vs databind 2.22 |
