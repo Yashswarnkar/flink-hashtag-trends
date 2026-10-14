@@ -93,7 +93,7 @@ so replays after a failure overwrite instead of double counting. Phase 5 explain
 |---|---|---|---|
 | `hashtag:totals` | HASH tag → count | 1 | running total per tag (from keyed state) |
 | `trending:{size}:{windowEndMs}` | ZSET tag → count | 2/4 | top-K for one window, `EXPIRE` ~1h |
-| `trending:{size}:latest` | STRING | 2/4 | windowEndMs of newest complete window |
+| `trending:{size}:windows` | ZSET end → end | 2/4 | index of written windows; max = newest (was a STRING `latest`, see Deviations) |
 | `late:events` | STREAM (`MAXLEN ~1000`) | 2 | late records from the side output |
 | `stats:late` | HASH | 2 | counters for late events per tag (absolute) |
 
@@ -159,7 +159,7 @@ Each phase: deliverables → acceptance checks (all must pass before calling it 
 - Accept: generator at 1k ev/s → `HGETALL hashtag:totals` grows; UI shows shuffle between
   source and keyed operator on both TMs; tests green.
 
-### Phase 2: Event time and windows
+### Phase 2: Event time and windows ✅
 - Generator adds `--out-of-order-ms`, `--late-fraction`, `--late-ms`.
 - WatermarkStrategy `forBoundedOutOfOrderness` at the source (per-partition) + `withIdleness`.
 - Sliding window (default size 60s, slide 10s, configurable) counting per tag;
@@ -252,3 +252,7 @@ Each phase: deliverables → acceptance checks (all must pass before calling it 
 | 2026-10-04 | Generator writes ground truth (`-truth-out`) + `make verify` added in phase 1 (was phase 3) | exact correctness check from day one |
 | 2026-10-04 | `JobConfig` parses `--key value` args itself | avoid `ParameterTool` package churn in Flink 2.x (Q3) |
 | 2026-10-04 | Jackson pinned via `jackson-bom` | Kafka connector pulled jackson-core 2.18 vs databind 2.22 |
+| 2026-10-15 | JSON parsing moved from `parse-post` operator into the source (`PostDeserializer`) | watermarks must be generated in the source, per partition, from `event_time` |
+| 2026-10-15 | `trending:{size}:latest` STRING → `trending:{size}:windows` ZSET index | parallel subtasks (and lateness re-fires) would make a single pointer go backwards; a ZSET's max is monotonic and idempotent |
+| 2026-10-15 | `metrics.fetcher.update-interval: 2000` on the cluster | default 10 s made watermarks look stale |
+| 2026-10-15 | Late-data demo uses 90 s lateness, not 30 s | with sliding windows, a record only hits the side output when *all* its windows are closed (≈ size + lateness + bound) |

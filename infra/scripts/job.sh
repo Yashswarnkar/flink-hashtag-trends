@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Manage the hashtag-trends job through Flink's REST API (the same API the UI uses).
 #
-#   job.sh submit [parallelism]   upload the fat jar and start the job
+#   job.sh submit [parallelism] [--key value ...]   upload the fat jar and start the job,
+#                                 passing any --key value pairs to the job (see JobConfig.java)
 #   job.sh cancel                 cancel every unfinished job
 #   job.sh list                   show jobs and their state
 set -euo pipefail
@@ -21,6 +22,8 @@ active_jobs() {
 case "${1:-}" in
   submit)
     parallelism="${2:-2}"
+    shift $(( $# < 2 ? $# : 2 ))
+    program_args=$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@")
     [[ -f "$JAR" ]] || { echo "no jar at $JAR; run: make build" >&2; exit 1; }
     if active_jobs | grep -qw "$JOB_NAME"; then
       echo "$JOB_NAME is already active; run: make job-cancel" >&2; exit 1
@@ -32,8 +35,9 @@ case "${1:-}" in
     jar_id=$(curl -fs -X POST -H "Expect:" -F "jarfile=@$JAR" "$FLINK/jars/upload" \
       | json 'print(d["filename"].rsplit("/",1)[-1])')
     job_id=$(curl -fs -X POST "$FLINK/jars/$jar_id/run" -H 'Content-Type: application/json' \
-      -d "{\"parallelism\": $parallelism}" | json 'print(d["jobid"])')
-    echo "submitted $JOB_NAME (parallelism $parallelism): $FLINK/#/job/running/$job_id/overview"
+      -d "{\"parallelism\": $parallelism, \"programArgsList\": $program_args}" | json 'print(d["jobid"])')
+    echo "submitted $JOB_NAME (parallelism $parallelism, args $program_args)"
+    echo "  $FLINK/#/job/running/$job_id/overview"
     ;;
   cancel)
     active_jobs | while read -r jid name; do

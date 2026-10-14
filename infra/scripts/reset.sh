@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start from a clean slate: no jobs, an empty `posts` topic, no consumer offsets, no results in Redis.
+# Start from a clean slate: no jobs, an empty `posts` topic, no consumer offsets, empty Redis.
 # Needed before comparing Redis against a generator's --truth-out file.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -23,5 +23,6 @@ done
 make --no-print-directory topics >/dev/null
 echo "topic posts recreated, consumer group offsets removed"
 
-"${COMPOSE[@]}" exec -T redis redis-cli DEL hashtag:totals >/dev/null
-echo "redis hashtag:totals cleared"
+# Redis holds nothing but this job's results.
+"${COMPOSE[@]}" exec -T redis redis-cli FLUSHDB >/dev/null
+echo "redis cleared"

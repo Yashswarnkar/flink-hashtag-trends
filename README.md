@@ -18,8 +18,8 @@ plus a write-up of what happens inside the cluster.
 |---|---|---|
 | 0 | Cluster anatomy: VM, Kafka, Flink, Redis, smoke job | ✅ |
 | 1 | End to end: generator → Kafka → Flink count → Redis | ✅ |
-| 2 | Event time, watermarks, sliding windows, late data | ⏳ |
-| 3 | Keyed state, RocksDB, checkpoints, failure recovery | |
+| 2 | Event time, watermarks, sliding windows, late data | ✅ |
+| 3 | Keyed state, RocksDB, checkpoints, failure recovery | ⏳ |
 | 4 | Two-stage top-K, hot-key skew, salting | |
 | 5 | Custom Redis Sink (Sink v2), delivery guarantees, backpressure | |
 | 6 | Savepoints and rescaling | |
@@ -39,6 +39,8 @@ make build       # job jar (with tests) + generator binary
 make reset job   # clean slate, submit the hashtag job
 make gen DURATION=30s
 make verify      # Redis totals == generator's ground truth?
+make trending    # top hashtags of the newest 60 s window
+make scenario-02 # watch watermarks, windows and late data live
 make help        # all targets
 make down        # stop everything and the VM
 ```
@@ -55,6 +57,7 @@ make down        # stop everything and the VM
 infra/       Lima VM config, docker-compose, helper scripts (job submit/reset/verify)
 generator/   Go: synthetic posts → Kafka, skewed hashtags, ground-truth output
 flink/       Maven: redis-sink (Sink v2 connector) + hashtag-job (the pipeline)
+scenarios/   scripts that trigger one Flink behaviour each and print what to watch
 docs/        PLAN.md (full plan + progress) and one concept guide per phase
 ```
 

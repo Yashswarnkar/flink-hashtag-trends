@@ -10,10 +10,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"log"
 	"os"
 	"os/signal"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -34,18 +37,32 @@ func main() {
 	users := flag.Int("users", 10000, "number of distinct users (Kafka message keys)")
 	seed := flag.Uint64("seed", uint64(time.Now().UnixNano()), "random seed")
 	truthOut := flag.String("truth-out", "", "write acknowledged per-tag counts to this JSON file on exit")
+	outOfOrder := flag.Duration("out-of-order", 0, "backdate every event time by a random delay in [0, d)")
+	lateFraction := flag.Float64("late-fraction", 0, "fraction of posts that are additionally backdated by -late")
+	late := flag.Duration("late", 30*time.Second, "extra delay for late posts")
+	partitions := flag.String("partitions", "", "only write to these partitions, e.g. 0,1,2 (default: hash of user)")
 	flag.Parse()
 
-	g, err := gen.New(gen.Config{Tags: *tags, Zipf: *zipf, Users: *users, Seed: *seed})
+	g, err := gen.New(gen.Config{Tags: *tags, Zipf: *zipf, Users: *users, Seed: *seed,
+		OutOfOrder: *outOfOrder, LateFraction: *lateFraction, Late: *late})
+	if err != nil {
+		log.Fatal(err)
+	}
+	onlyPartitions, err := parsePartitions(*partitions)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	client, err := kgo.NewClient(
+	opts := []kgo.Opt{
 		kgo.SeedBrokers(*brokers),
 		kgo.DefaultProduceTopic(*topic),
-		kgo.ProducerLinger(5*time.Millisecond), // small batches: throughput without much latency
-	)
+		kgo.ProducerLinger(5 * time.Millisecond), // small batches: throughput without much latency
+	}
+	if len(onlyPartitions) > 0 {
+		// Leaving partitions empty on purpose: their watermark never advances (idleness demo).
+		opts = append(opts, kgo.RecordPartitioner(kgo.ManualPartitioner()))
+	}
+	client, err := kgo.NewClient(opts...)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -68,8 +85,8 @@ func main() {
 		truth               = map[string]int64{}
 	)
 
-	log.Printf("producing %d posts/s to %s on %s (tags=%d zipf=%.2f users=%d)",
-		*rate, *topic, *brokers, *tags, *zipf, *users)
+	log.Printf("producing %d posts/s to %s on %s (tags=%d zipf=%.2f users=%d out-of-order=%s late=%.1f%%@%s partitions=%v)",
+		*rate, *topic, *brokers, *tags, *zipf, *users, *outOfOrder, *lateFraction*100, *late, onlyPartitions)
 
 	// Every 10ms emit the number of posts due so far, so the long-run rate is exact.
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -93,7 +110,11 @@ loop:
 				post, postTags := g.Next()
 				value, _ := json.Marshal(post)
 				sent.Add(1)
-				client.Produce(ctx, &kgo.Record{Key: []byte(post.UserID), Value: value},
+				rec := &kgo.Record{Key: []byte(post.UserID), Value: value}
+				if len(onlyPartitions) > 0 {
+					rec.Partition = onlyPartitions[fnv32(post.UserID)%uint32(len(onlyPartitions))]
+				}
+				client.Produce(ctx, rec,
 					func(_ *kgo.Record, err error) {
 						if err != nil {
 							failed.Add(1)
@@ -127,6 +148,27 @@ loop:
 		}
 		log.Printf("wrote ground truth for %d tags to %s", len(truth), *truthOut)
 	}
+}
+
+func parsePartitions(s string) ([]int32, error) {
+	if s == "" {
+		return nil, nil
+	}
+	var out []int32
+	for _, f := range strings.Split(s, ",") {
+		n, err := strconv.Atoi(strings.TrimSpace(f))
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("bad -partitions value %q", s)
+		}
+		out = append(out, int32(n))
+	}
+	return out, nil
+}
+
+func fnv32(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
 }
 
 func printTop(counts map[string]int64, n int) {

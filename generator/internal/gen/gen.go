@@ -24,6 +24,13 @@ type Config struct {
 	Zipf  float64 // skew exponent s > 1; higher = a few tags dominate
 	Users int
 	Seed  uint64
+
+	// Event-time disorder. Every post's event_time is "now" minus a delay:
+	//   - OutOfOrder: uniform random delay in [0, OutOfOrder) (network jitter, client batching)
+	//   - LateFraction of posts additionally get Late + jitter (a phone that was offline)
+	OutOfOrder   time.Duration
+	LateFraction float64
+	Late         time.Duration
 }
 
 // Generator is not safe for concurrent use.
@@ -32,6 +39,7 @@ type Generator struct {
 	zipf  *rand.Zipf
 	vocab []string
 	users int
+	cfg   Config
 	now   func() time.Time
 }
 
@@ -54,12 +62,16 @@ func New(cfg Config) (*Generator, error) {
 	if cfg.Zipf <= 1 {
 		return nil, fmt.Errorf("zipf exponent must be > 1, got %v", cfg.Zipf)
 	}
+	if cfg.LateFraction < 0 || cfg.LateFraction > 1 || cfg.OutOfOrder < 0 || cfg.Late < 0 {
+		return nil, fmt.Errorf("late fraction must be in [0,1] and delays must be >= 0")
+	}
 	rng := rand.New(rand.NewPCG(cfg.Seed, cfg.Seed^0x9e3779b97f4a7c15))
 	return &Generator{
 		rng:   rng,
 		zipf:  rand.NewZipf(rng, cfg.Zipf, 1, uint64(cfg.Tags-1)),
 		vocab: Vocabulary(cfg.Tags),
 		users: cfg.Users,
+		cfg:   cfg,
 		now:   time.Now,
 	}, nil
 }
@@ -103,8 +115,20 @@ func (g *Generator) Next() (Post, []string) {
 		UserID:    fmt.Sprintf("u-%d", g.rng.IntN(g.users)),
 		Text:      strings.Join(words, " "),
 		Lang:      langs[g.rng.IntN(len(langs))],
-		EventTime: g.now().UnixMilli(),
+		EventTime: g.now().Add(-g.delay()).UnixMilli(),
 	}, tags
+}
+
+// delay is how far in the past this post's event time lies relative to when it is sent.
+func (g *Generator) delay() time.Duration {
+	var d time.Duration
+	if g.cfg.OutOfOrder > 0 {
+		d = time.Duration(g.rng.Int64N(int64(g.cfg.OutOfOrder)))
+	}
+	if g.cfg.LateFraction > 0 && g.rng.Float64() < g.cfg.LateFraction {
+		d += g.cfg.Late + time.Duration(g.rng.Int64N(int64(time.Second)))
+	}
+	return d
 }
 
 // 0 tags: 10%, 1: 45%, 2: 30%, 3: 15%.

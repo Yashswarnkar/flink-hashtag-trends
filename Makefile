@@ -84,8 +84,8 @@ test: ## Run Java and Go tests
 	cd flink && mvn -B -q test
 	cd generator && go test ./...
 
-job: ## Submit the hashtag job (make job P=4)
-	./infra/scripts/job.sh submit $(P)
+job: ## Submit the hashtag job (make job P=4 JOB_ARGS="--idleness 0")
+	./infra/scripts/job.sh submit $(P) $(JOB_ARGS)
 
 job-cancel: ## Cancel all running jobs
 	./infra/scripts/job.sh cancel
@@ -102,9 +102,28 @@ reset: ## Cancel jobs, empty the topic, clear Redis results
 verify: ## Compare Redis totals with the last generator run's ground truth
 	./infra/scripts/verify-totals.py $(TRUTH)
 
-totals: ## Top 15 hashtags from Redis
+trending: ## Top 10 hashtags of the newest complete window
+	@./infra/scripts/trending.sh
+
+watermarks: ## Each task's event-time watermark and its lag behind the wall clock
+	@./infra/scripts/watermarks.py
+
+late: ## Late events: latest entries and per-tag counts
+	@$(COMPOSE) exec -T redis redis-cli XREVRANGE late:events + - COUNT 5
+	@echo "--- late per tag (top 10) ---"
+	@$(COMPOSE) exec -T redis redis-cli HGETALL stats:late | paste - - | sort -k2 -nr | head -10
+
+totals: ## Top 15 all-time hashtags from Redis
 	@$(COMPOSE) exec -T redis redis-cli HGETALL hashtag:totals \
 		| paste - - | sort -k2 -nr | head -15
+
+# ---- Scenarios --------------------------------------------------------------
+
+scenario-02: ## Event time: watermarks, windows firing, 90s-late posts → side output
+	./scenarios/02-late-data.sh
+
+scenario-02b: ## Event time: empty partitions freeze the watermark; idleness fixes it
+	./scenarios/02b-idle-partitions.sh
 
 kafka-topics: ## Describe Kafka topics
 	$(COMPOSE) exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --describe
@@ -113,4 +132,4 @@ redis-cli: ## Open redis-cli
 	$(COMPOSE) exec redis redis-cli
 
 
-.PHONY: build test job job-cancel jobs gen reset verify totals smoke-stop topics help vm-create vm-start vm-stop vm-delete vm-shell up down clean ps logs stats urls smoke kafka-topics redis-cli
+.PHONY: scenario-02 scenario-02b watermarks trending late build test job job-cancel jobs gen reset verify totals smoke-stop topics help vm-create vm-start vm-stop vm-delete vm-shell up down clean ps logs stats urls smoke kafka-topics redis-cli

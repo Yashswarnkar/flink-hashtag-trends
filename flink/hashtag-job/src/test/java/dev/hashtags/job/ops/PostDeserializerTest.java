@@ -1,12 +1,13 @@
 package dev.hashtags.job.ops;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.hashtags.job.model.Post;
 
 import org.junit.jupiter.api.Test;
 
-class ParsePostTest {
+class PostDeserializerTest {
 
     @Test
     void parsesGeneratorJsonAndIgnoresUnknownFields() {
@@ -14,13 +15,14 @@ class ParsePostTest {
                 {"post_id":"p1","user_id":"u-1","text":"hi #flink","lang":"en",
                  "event_time":1759550000000,"extra":true}""";
 
-        assertThat(ParsePost.parse(json))
+        assertThat(PostDeserializer.parse(json.getBytes(UTF_8)))
                 .contains(new Post("p1", "u-1", "hi #flink", "en", 1759550000000L));
     }
 
     @Test
-    void rejectsMalformedJsonAndMissingText() {
-        assertThat(ParsePost.parse("{not json")).isEmpty();
-        assertThat(ParsePost.parse("{\"post_id\":\"p1\"}")).isEmpty();
+    void rejectsMalformedJsonMissingTextOrMissingEventTime() {
+        assertThat(PostDeserializer.parse("{not json".getBytes(UTF_8))).isEmpty();
+        assertThat(PostDeserializer.parse("{\"post_id\":\"p1\",\"event_time\":5}".getBytes(UTF_8))).isEmpty();
+        assertThat(PostDeserializer.parse("{\"text\":\"#a\"}".getBytes(UTF_8))).isEmpty();
     }
 }

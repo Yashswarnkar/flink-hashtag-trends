@@ -12,6 +12,9 @@ x-flink-props: &flink-props |
   taskmanager.numberOfTaskSlots: 2
   parallelism.default: 2
   rest.flamegraph.enabled: true
+  # How often the REST API/UI refreshes metrics (incl. watermarks). Default 10s is too stale
+  # to watch watermarks move.
+  metrics.fetcher.update-interval: 2000
   # Explicit so failure behaviour is visible and predictable (see docs/00).
   restart-strategy.type: exponential-delay
 
